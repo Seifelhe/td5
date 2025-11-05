@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AR Application - Three.js</title>
-    <link rel="stylesheet" href="style.css">
-   
+    
 </head>
 <body>
     <div id="content">
@@ -13,13 +12,17 @@
         <div id="mySidenav">
             <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
             <div class="menu-grid" id="thumbnail-container">
+                <!-- Thumbnails will be generated here -->
             </div>
         </div>
 
+        <!-- Open Menu Button -->
         <button class="open-menu" onclick="openNav()">☰ Menu</button>
 
+        <!-- Loading Indicator -->
         <div id="loading" class="loading hidden">Loading...</div>
 
+        <!-- 3D Container -->
         <div id="container"></div>
 
         <!-- AR Place Button -->
@@ -39,8 +42,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { ARButton } from 'three/addons/webxr/ARButton.js';
-        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-        import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+
 
         // Global variables
         let scene, camera, renderer, controls;
@@ -48,129 +50,47 @@
         let reticle;
         let hitTestSource = null;
         let hitTestSourceRequested = false;
-        let objLoader, mtlLoader;
         let thumbnails = [];
-        let selectedThumbnailIndex = 0;
+        let selectedGeometryId = '1';
         let thumbnailRenderer, thumbnailScene, thumbnailCamera;
 
-        const mtlData = `
-newmtl mat21
-Ka 1.0 1.0 1.0
-Kd 1.0 1.0 1.0
-Ks 0.5 0.5 0.5
-Ns 96.0
-
-newmtl mat23
-Ka 0.01 0.01 0.01
-Kd 0.01 0.01 0.01
-Ks 0.5 0.5 0.5
-Ns 96.0
-
-newmtl mat13
-Ka 1.0 0.33 0.0
-Kd 1.0 0.33 0.0
-Ks 0.5 0.5 0.5
-Ns 96.0
-
-newmtl mat18
-Ka 1.0 0.61 0.25
-Kd 1.0 0.61 0.25
-Ks 0.5 0.5 0.5
-Ns 96.0
-
-newmtl mat11
-Ka 0.0 0.31 0.25
-Kd 0.0 0.31 0.25
-Ks 0.5 0.5 0.5
-Ns 96.0
-`;
-
-        const objData = `
-# Simple OBJ Model
-mtllib materials.mtl
-
-# White box (mat21)
-usemtl mat21
-v -1.0 -0.5 0.0
-v 1.0 -0.5 0.0
-v 1.0 0.5 0.0
-v -1.0 0.5 0.0
-v -1.0 -0.5 0.5
-v 1.0 -0.5 0.5
-v 1.0 0.5 0.5
-v -1.0 0.5 0.5
-vn 0.0 0.0 1.0
-vn 0.0 0.0 -1.0
-vn 0.0 1.0 0.0
-vn 0.0 -1.0 0.0
-vn 1.0 0.0 0.0
-vn -1.0 0.0 0.0
-f 1//2 2//2 3//2 4//2
-f 5//1 6//1 7//1 8//1
-f 4//3 3//3 7//3 8//3
-f 1//4 2//4 6//4 5//4
-f 2//5 6//5 7//5 3//5
-f 1//6 5//6 8//6 4//6
-
-# Orange top (mat13)
-usemtl mat13
-v -0.8 0.5 0.1
-v 0.8 0.5 0.1
-v 0.8 0.5 0.4
-v -0.8 0.5 0.4
-v -0.5 1.0 0.15
-v 0.5 1.0 0.15
-v 0.5 1.0 0.35
-v -0.5 1.0 0.35
-vn 0.0 1.0 0.0
-f 9//7 10//7 11//7 12//7
-f 13//7 14//7 15//7 16//7
-f 9//7 13//7 16//7 12//7
-f 10//7 14//7 15//7 11//7
-f 9//7 10//7 14//7 13//7
-f 12//7 11//7 15//7 16//7
-
-# Teal accent (mat11)
-usemtl mat11
-v -0.3 -0.5 0.5
-v 0.3 -0.5 0.5
-v 0.3 0.5 0.5
-v -0.3 0.5 0.5
-v -0.2 -0.5 0.7
-v 0.2 -0.5 0.7
-v 0.2 0.5 0.7
-v -0.2 0.5 0.7
-vn 0.0 0.0 1.0
-f 17//8 18//8 19//8 20//8
-f 21//8 22//8 23//8 24//8
-f 17//8 21//8 24//8 20//8
-f 18//8 22//8 23//8 19//8
-f 20//8 19//8 23//8 24//8
-f 17//8 18//8 22//8 21//8
-
-# Black details (mat23)
-usemtl mat23
-v -0.9 -0.4 0.5
-v -0.7 -0.4 0.5
-v -0.7 -0.2 0.5
-v -0.9 -0.2 0.5
-vn 0.0 0.0 1.0
-f 25//9 26//9 27//9 28//9
-
-v 0.7 -0.4 0.5
-v 0.9 -0.4 0.5
-v 0.9 -0.2 0.5
-v 0.7 -0.2 0.5
-f 29//9 30//9 31//9 32//9
-
-# Light Orange stripe (mat18)
-usemtl mat18
-v -1.0 0.0 0.5
-v 1.0 0.0 0.5
-v 1.0 0.1 0.5
-v -1.0 0.1 0.5
-f 33//9 34//9 35//9 36//9
-`;
+        // Geometry definitions
+        const geometries = {
+            '1': {
+                name: 'Cube',
+                type: 'BoxGeometry',
+                size: 1,
+                color: '#ff0000',
+                rotations: [0, 90, 180, 270]
+            },
+            '2': {
+                name: 'Sphère',
+                type: 'SphereGeometry',
+                radius: 0.6,
+                widthSegments: 32,
+                heightSegments: 32,
+                color: '#0000ff',
+                rotations: [0, 90, 180, 270]
+            },
+            '3': {
+                name: 'Cône',
+                type: 'ConeGeometry',
+                radius: 0.6,
+                height: 1.5,
+                segments: 32,
+                color: '#00ff00',
+                rotations: [0, 90, 180, 270]
+            },
+            '4': {
+                name: 'Cylindre',
+                type: 'CylinderGeometry',
+                radius: 0.5,
+                height: 1.5,
+                segments: 32,
+                color: '#ffff00',
+                rotations: [0, 90, 180, 270]
+            }
+        };
 
         // Touch gesture variables
         let touchDown = false;
@@ -201,17 +121,24 @@ f 33//9 34//9 35//9 36//9
             renderer.shadowMap.enabled = true;
             document.getElementById('container').appendChild(renderer.domElement);
 
-            // Add AR Button
+            // Add AR Button with DOM Overlay support
             const arButton = ARButton.createButton(renderer, {
                 requiredFeatures: ['hit-test'],
                 optionalFeatures: ['dom-overlay'],
-                domOverlay: { root: document.getElementById('content') }
+                domOverlay: { root: document.body }
             });
             document.body.appendChild(arButton);
+            
+            // Check if DOM overlay is supported
+            if (navigator.xr) {
+                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+                    if (supported) {
+                        console.log('AR is supported');
+                    }
+                });
+            }
 
-            // Initialize loaders
-            objLoader = new OBJLoader();
-            mtlLoader = new MTLLoader();
+
 
             // OrbitControls
             controls = new OrbitControls(camera, renderer.domElement);
@@ -222,6 +149,7 @@ f 33//9 34//9 35//9 36//9
             controls.target.set(0, 0, -0.2);
             controls.update();
 
+            // Lights
             const directionalLight = new THREE.DirectionalLight(0xdddddd, 1);
             directionalLight.position.set(0, 0, 1);
             directionalLight.castShadow = true;
@@ -230,10 +158,12 @@ f 33//9 34//9 35//9 36//9
             const ambientLight = new THREE.AmbientLight(0x222222, 1);
             scene.add(ambientLight);
 
+            // Add hemisphere light for better lighting
             const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
             hemiLight.position.set(0, 20, 0);
             scene.add(hemiLight);
 
+            // Create Reticle (for AR placement)
             const reticleGeometry = new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2);
             const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
             reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
@@ -252,9 +182,14 @@ f 33//9 34//9 35//9 36//9
             renderer.domElement.addEventListener('touchend', onTouchEnd, false);
             renderer.domElement.addEventListener('touchmove', onTouchMove, false);
 
+            // Window resize
             window.addEventListener('resize', onWindowResize, false);
+
+            // AR session events
             renderer.xr.addEventListener('sessionstart', onSessionStart);
             renderer.xr.addEventListener('sessionend', onSessionEnd);
+
+            // Place button
             document.getElementById('place-button').addEventListener('click', arPlace);
 
             // Thumbnail click handlers will be added after generation
@@ -265,79 +200,105 @@ f 33//9 34//9 35//9 36//9
 
         // Load default model
         function loadDefaultModel() {
-            loadOBJModel();
+            loadGeometry('1');
         }
 
-        // Load OBJ Model with materials
-        function loadOBJModel() {
+        // Load geometry by ID
+        function loadGeometry(geometryId) {
+            if (!geometries[geometryId]) return;
+
             // Show loading
             const loading = document.getElementById('loading');
             loading.classList.remove('hidden');
 
-            // Remove previous object
+            // Store previous object state for AR mode
+            let previousPosition = null;
+            let previousScale = null;
+            let previousVisible = false;
+            let wasInAR = renderer.xr.isPresenting;
+
             if (currentObject) {
+                previousPosition = currentObject.position.clone();
+                previousScale = currentObject.scale.clone();
+                previousVisible = currentObject.visible;
                 scene.remove(currentObject);
                 currentObject = null;
             }
 
-            try {
-                // Parse MTL data
-                const materials = mtlLoader.parse(mtlData, '');
-                materials.preload();
+            const geomData = geometries[geometryId];
+            let geometry;
 
-                // Set materials for OBJ loader
-                objLoader.setMaterials(materials);
-
-                // Parse OBJ data
-                const object = objLoader.parse(objData);
-
-                // Configure the loaded object
-                object.traverse((child) => {
-                    if (child instanceof THREE.Mesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                        
-                        // Ensure materials are properly configured
-                        if (child.material) {
-                            if (Array.isArray(child.material)) {
-                                child.material.forEach(mat => {
-                                    mat.needsUpdate = true;
-                                });
-                            } else {
-                                child.material.needsUpdate = true;
-                            }
-                        }
-                        
-                        if (child.geometry) {
-                            child.geometry.computeVertexNormals();
-                        }
-                    }
-                });
-
-                // Center and scale the object
-                centerAndScaleObject(object);
-                
-                currentObject = object;
-                scene.add(currentObject);
-
-                // Generate thumbnails
-                generateThumbnails();
-
-                // Hide loading
-                setTimeout(() => {
-                    loading.classList.add('hidden');
-                }, 300);
-
-            } catch (error) {
-                console.error('Error loading OBJ model:', error);
-                loading.innerHTML = 'Error loading model';
-                setTimeout(() => {
-                    loading.classList.add('hidden');
-                }, 2000);
+            // Create geometry based on type
+            switch (geomData.type) {
+                case 'BoxGeometry':
+                    geometry = new THREE.BoxGeometry(geomData.size, geomData.size, geomData.size);
+                    break;
+                case 'SphereGeometry':
+                    geometry = new THREE.SphereGeometry(
+                        geomData.radius,
+                        geomData.widthSegments,
+                        geomData.heightSegments
+                    );
+                    break;
+                case 'ConeGeometry':
+                    geometry = new THREE.ConeGeometry(
+                        geomData.radius,
+                        geomData.height,
+                        geomData.segments
+                    );
+                    break;
+                case 'CylinderGeometry':
+                    geometry = new THREE.CylinderGeometry(
+                        geomData.radius,
+                        geomData.radius,
+                        geomData.height,
+                        geomData.segments
+                    );
+                    break;
+                default:
+                    geometry = new THREE.BoxGeometry(1, 1, 1);
             }
+
+            // Create material
+            const material = new THREE.MeshPhongMaterial({
+                color: geomData.color,
+                shininess: 30,
+                specular: 0x444444
+            });
+
+            // Create mesh
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            // Compute normals
+            geometry.computeVertexNormals();
+
+            currentObject = mesh;
+            scene.add(currentObject);
+            selectedGeometryId = geometryId;
+
+            // Restore AR state if we were in AR mode
+            if (wasInAR && previousPosition && previousScale) {
+                currentObject.position.copy(previousPosition);
+                currentObject.scale.copy(previousScale);
+                currentObject.visible = previousVisible;
+            }
+
+            // Generate thumbnails for all geometries (only once)
+            if (thumbnails.length === 0) {
+                generateAllThumbnails();
+            }
+
+            // Hide loading
+            setTimeout(() => {
+                loading.classList.add('hidden');
+            }, 300);
         }
 
+        // Setup thumbnail renderer
         function setupThumbnailRenderer() {
+            // Create a separate renderer for thumbnail generation
             thumbnailRenderer = new THREE.WebGLRenderer({ 
                 antialias: true, 
                 alpha: true,
@@ -366,43 +327,59 @@ f 33//9 34//9 35//9 36//9
             thumbnailScene.add(hemiLight);
         }
 
-        // Generate thumbnails from the loaded model
-        function generateThumbnails() {
-            if (!currentObject || !thumbnailRenderer) return;
+        // Generate thumbnails for all geometries
+        function generateAllThumbnails() {
+            if (!thumbnailRenderer) return;
 
             thumbnails = [];
             const container = document.getElementById('thumbnail-container');
             container.innerHTML = '';
 
-            const rotations = [
-                { angle: 0, label: 'Front' },
-                { angle: 90, label: 'Right' },
-                { angle: 180, label: 'Back' },
-                { angle: 270, label: 'Left' }
-            ];
+            // Generate thumbnail for each geometry type
+            Object.keys(geometries).forEach((geomId) => {
+                const geomData = geometries[geomId];
+                let geometry;
 
-            rotations.forEach((rotation, index) => {
-                // Clone the object for thumbnail
-                const thumbnailObj = currentObject.clone();
-                thumbnailScene.add(thumbnailObj);
+                // Create geometry
+                switch (geomData.type) {
+                    case 'BoxGeometry':
+                        geometry = new THREE.BoxGeometry(geomData.size, geomData.size, geomData.size);
+                        break;
+                    case 'SphereGeometry':
+                        geometry = new THREE.SphereGeometry(
+                            geomData.radius,
+                            geomData.widthSegments,
+                            geomData.heightSegments
+                        );
+                        break;
+                    case 'ConeGeometry':
+                        geometry = new THREE.ConeGeometry(
+                            geomData.radius,
+                            geomData.height,
+                            geomData.segments
+                        );
+                        break;
+                    case 'CylinderGeometry':
+                        geometry = new THREE.CylinderGeometry(
+                            geomData.radius,
+                            geomData.radius,
+                            geomData.height,
+                            geomData.segments
+                        );
+                        break;
+                }
 
-                // Center and scale for thumbnail
-                const box = new THREE.Box3().setFromObject(thumbnailObj);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-                
-                thumbnailObj.position.x = -center.x;
-                thumbnailObj.position.y = -center.y;
-                thumbnailObj.position.z = -center.z;
+                // Create material
+                const material = new THREE.MeshPhongMaterial({
+                    color: geomData.color,
+                    shininess: 30
+                });
 
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const targetSize = 2;
-                const scale = targetSize / maxDim;
-                thumbnailObj.scale.set(scale, scale, scale);
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.rotation.x = -0.3;
+                mesh.rotation.y = 0.5;
 
-                // Apply rotation
-                thumbnailObj.rotation.y = (rotation.angle * Math.PI) / 180;
-                thumbnailObj.rotation.x = -0.2; // Slight tilt for better view
+                thumbnailScene.add(mesh);
 
                 // Render to canvas
                 thumbnailRenderer.render(thumbnailScene, thumbnailCamera);
@@ -413,51 +390,49 @@ f 33//9 34//9 35//9 36//9
                 // Create thumbnail element
                 const thumbDiv = document.createElement('div');
                 thumbDiv.className = 'thumbnail-item';
-                if (index === selectedThumbnailIndex) {
+                if (geomId === selectedGeometryId) {
                     thumbDiv.classList.add('selected');
                 }
-                thumbDiv.dataset.index = index;
-                thumbDiv.title = rotation.label;
+                thumbDiv.dataset.geomid = geomId;
+                thumbDiv.title = geomData.name;
 
                 const img = document.createElement('img');
                 img.src = dataURL;
-                img.alt = rotation.label;
+                img.alt = geomData.name;
 
                 thumbDiv.appendChild(img);
                 container.appendChild(thumbDiv);
 
-                // Add click handler
-                thumbDiv.addEventListener('click', () => {
-                    selectThumbnail(index);
+                // Add click handler - NOW WORKS IN AR MODE!
+                thumbDiv.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    
+                    console.log('Thumbnail clicked:', geomData.name, 'AR active:', renderer.xr.isPresenting);
+                    
+                    loadGeometry(geomId);
+                    updateThumbnailSelection(geomId);
                     closeNav();
                 });
 
-                thumbnails.push(dataURL);
+                thumbnails.push({ id: geomId, dataURL: dataURL });
 
                 // Remove from thumbnail scene
-                thumbnailScene.remove(thumbnailObj);
+                thumbnailScene.remove(mesh);
             });
         }
 
-        // Select thumbnail
-        function selectThumbnail(index) {
-            selectedThumbnailIndex = index;
-            
-            // Update visual selection
+        // Update thumbnail selection
+        function updateThumbnailSelection(geomId) {
+            selectedGeometryId = geomId;
             const thumbItems = document.querySelectorAll('.thumbnail-item');
-            thumbItems.forEach((item, i) => {
-                if (i === index) {
+            thumbItems.forEach((item) => {
+                if (item.dataset.geomid === geomId) {
                     item.classList.add('selected');
                 } else {
                     item.classList.remove('selected');
                 }
             });
-            loadOBJModel();
-        }
-
-        // Legacy function for menu compatibility
-        function loadModel(modelId) {
-            loadOBJModel();
         }
 
         // Center object
@@ -503,6 +478,14 @@ f 33//9 34//9 35//9 36//9
 
         // Touch events
         function onTouchStart(event) {
+            // Don't intercept touches on menu or UI elements
+            const target = event.target;
+            if (target.closest('#mySidenav') || 
+                target.closest('.open-menu') || 
+                target.closest('#place-button')) {
+                return;
+            }
+            
             if (event.touches.length === 1 && currentObject) {
                 touchDown = true;
                 touchX = event.touches[0].clientX;
@@ -511,10 +494,26 @@ f 33//9 34//9 35//9 36//9
         }
 
         function onTouchEnd(event) {
+            // Don't intercept touches on menu or UI elements
+            const target = event.target;
+            if (target.closest('#mySidenav') || 
+                target.closest('.open-menu') || 
+                target.closest('#place-button')) {
+                return;
+            }
+            
             touchDown = false;
         }
 
         function onTouchMove(event) {
+            // Don't intercept touches on menu or UI elements
+            const target = event.target;
+            if (target.closest('#mySidenav') || 
+                target.closest('.open-menu') || 
+                target.closest('#place-button')) {
+                return;
+            }
+            
             if (!touchDown || !currentObject) return;
 
             event.preventDefault();
@@ -539,15 +538,34 @@ f 33//9 34//9 35//9 36//9
 
         // AR Session Start
         function onSessionStart() {
+            console.log('AR Session Started');
+            
+            // Object starts invisible until placed
             if (currentObject) {
                 currentObject.visible = false;
             }
             document.getElementById('place-button').classList.remove('hidden');
+            
+            // Add AR active class for styling
+            document.body.classList.add('ar-active');
+            
+            // Ensure menu button is visible and accessible in AR
+            const openButton = document.querySelector('.open-menu');
+            if (openButton) {
+                openButton.style.display = 'block';
+                openButton.style.pointerEvents = 'auto';
+            }
         }
 
         // AR Session End
         function onSessionEnd() {
+            console.log('AR Session Ended');
+            
             document.getElementById('place-button').classList.add('hidden');
+            
+            // Remove AR active class
+            document.body.classList.remove('ar-active');
+            
             if (currentObject) {
                 currentObject.visible = true;
                 // Reset position but keep scale
@@ -564,6 +582,10 @@ f 33//9 34//9 35//9 36//9
             if (reticle.visible && currentObject) {
                 currentObject.position.setFromMatrixPosition(reticle.matrix);
                 currentObject.visible = true;
+                
+                // Scale object appropriately for AR
+                const scale = 0.3; // Smaller scale for AR viewing
+                currentObject.scale.set(scale, scale, scale);
             }
         }
 
@@ -601,12 +623,21 @@ f 33//9 34//9 35//9 36//9
                     }
                 }
             }
+
+            // Update controls
             controls.update();
+
+            // Rotate current object slightly for visual effect (optional)
             if (currentObject && currentObject.visible && !renderer.xr.isPresenting) {
+                // Subtle automatic rotation
                 currentObject.rotation.y += 0.002;
             }
+
+            // Render scene
             renderer.render(scene, camera);
         }
+
+        // Initialize on load
         init();
     </script>
 </body>
