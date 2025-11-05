@@ -77,7 +77,8 @@
             height: 100%;
             width: 0;
             position: fixed;
-            z-index: 1000;
+            z-index: 1001;
+            pointer-events: auto;
             top: 0;
             left: 0;
             background-color: var(--color-surface);
@@ -97,6 +98,7 @@
             grid-template-columns: repeat(2, 1fr);
             gap: 10px;
             padding: 20px;
+            pointer-events: auto;
         }
 
         #mySidenav .thumbnail-item {
@@ -108,6 +110,7 @@
             transition: all 200ms var(--ease-standard);
             overflow: hidden;
             background-color: #1a1a1a;
+            pointer-events: auto;
         }
 
         #mySidenav .thumbnail-item:hover {
@@ -137,6 +140,8 @@
             background: none;
             color: var(--color-text);
             cursor: pointer;
+            z-index: 1002;
+            pointer-events: auto;
         }
 
         #mySidenav .closebtn:hover {
@@ -152,7 +157,8 @@
             left: 20px;
             font-size: 24px;
             cursor: pointer;
-            z-index: 999;
+            z-index: 1003;
+            pointer-events: auto;
             background-color: var(--color-primary);
             color: var(--color-white);
             padding: 12px 20px;
@@ -176,6 +182,7 @@
             position: absolute;
             top: 0;
             left: 0;
+            z-index: 0;
         }
 
         /* Canvas */
@@ -183,6 +190,7 @@
             display: block;
             width: 100%;
             height: 100%;
+            z-index: 0;
         }
 
         /* AR Place Button */
@@ -200,7 +208,8 @@
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            z-index: 998;
+            z-index: 100;
+            pointer-events: auto;
             transition: all 0.2s var(--ease-standard);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
@@ -232,6 +241,22 @@
 
         .loading.hidden {
             display: none;
+        }
+
+        /* AR Mode Enhancements */
+        .ar-active .open-menu {
+            background-color: var(--color-primary);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .ar-active #mySidenav {
+            background-color: rgba(255, 255, 253, 0.95);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .ar-active #mySidenav {
+                background-color: rgba(38, 40, 40, 0.95);
+            }
         }
     </style>
 </head>
@@ -350,13 +375,22 @@
             renderer.shadowMap.enabled = true;
             document.getElementById('container').appendChild(renderer.domElement);
 
-            // Add AR Button
+            // Add AR Button with DOM Overlay support
             const arButton = ARButton.createButton(renderer, {
                 requiredFeatures: ['hit-test'],
                 optionalFeatures: ['dom-overlay'],
-                domOverlay: { root: document.getElementById('content') }
+                domOverlay: { root: document.body }
             });
             document.body.appendChild(arButton);
+            
+            // Check if DOM overlay is supported
+            if (navigator.xr) {
+                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+                    if (supported) {
+                        console.log('AR is supported');
+                    }
+                });
+            }
 
 
 
@@ -431,8 +465,16 @@
             const loading = document.getElementById('loading');
             loading.classList.remove('hidden');
 
-            // Remove previous object
+            // Store previous object state for AR mode
+            let previousPosition = null;
+            let previousScale = null;
+            let previousVisible = false;
+            let wasInAR = renderer.xr.isPresenting;
+
             if (currentObject) {
+                previousPosition = currentObject.position.clone();
+                previousScale = currentObject.scale.clone();
+                previousVisible = currentObject.visible;
                 scene.remove(currentObject);
                 currentObject = null;
             }
@@ -489,6 +531,13 @@
             currentObject = mesh;
             scene.add(currentObject);
             selectedGeometryId = geometryId;
+
+            // Restore AR state if we were in AR mode
+            if (wasInAR && previousPosition && previousScale) {
+                currentObject.position.copy(previousPosition);
+                currentObject.scale.copy(previousScale);
+                currentObject.visible = previousVisible;
+            }
 
             // Generate thumbnails for all geometries (only once)
             if (thumbnails.length === 0) {
@@ -608,13 +657,16 @@
                 thumbDiv.appendChild(img);
                 container.appendChild(thumbDiv);
 
-                // Add click handler
-                thumbDiv.addEventListener('click', () => {
-                    if (!renderer.xr.isPresenting) {
-                        loadGeometry(geomId);
-                        updateThumbnailSelection(geomId);
-                        closeNav();
-                    }
+                // Add click handler - NOW WORKS IN AR MODE!
+                thumbDiv.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    
+                    console.log('Thumbnail clicked:', geomData.name, 'AR active:', renderer.xr.isPresenting);
+                    
+                    loadGeometry(geomId);
+                    updateThumbnailSelection(geomId);
+                    closeNav();
                 });
 
                 thumbnails.push({ id: geomId, dataURL: dataURL });
@@ -680,6 +732,14 @@
 
         // Touch events
         function onTouchStart(event) {
+            // Don't intercept touches on menu or UI elements
+            const target = event.target;
+            if (target.closest('#mySidenav') || 
+                target.closest('.open-menu') || 
+                target.closest('#place-button')) {
+                return;
+            }
+            
             if (event.touches.length === 1 && currentObject) {
                 touchDown = true;
                 touchX = event.touches[0].clientX;
@@ -688,10 +748,26 @@
         }
 
         function onTouchEnd(event) {
+            // Don't intercept touches on menu or UI elements
+            const target = event.target;
+            if (target.closest('#mySidenav') || 
+                target.closest('.open-menu') || 
+                target.closest('#place-button')) {
+                return;
+            }
+            
             touchDown = false;
         }
 
         function onTouchMove(event) {
+            // Don't intercept touches on menu or UI elements
+            const target = event.target;
+            if (target.closest('#mySidenav') || 
+                target.closest('.open-menu') || 
+                target.closest('#place-button')) {
+                return;
+            }
+            
             if (!touchDown || !currentObject) return;
 
             event.preventDefault();
@@ -716,15 +792,34 @@
 
         // AR Session Start
         function onSessionStart() {
+            console.log('AR Session Started');
+            
+            // Object starts invisible until placed
             if (currentObject) {
                 currentObject.visible = false;
             }
             document.getElementById('place-button').classList.remove('hidden');
+            
+            // Add AR active class for styling
+            document.body.classList.add('ar-active');
+            
+            // Ensure menu button is visible and accessible in AR
+            const openButton = document.querySelector('.open-menu');
+            if (openButton) {
+                openButton.style.display = 'block';
+                openButton.style.pointerEvents = 'auto';
+            }
         }
 
         // AR Session End
         function onSessionEnd() {
+            console.log('AR Session Ended');
+            
             document.getElementById('place-button').classList.add('hidden');
+            
+            // Remove AR active class
+            document.body.classList.remove('ar-active');
+            
             if (currentObject) {
                 currentObject.visible = true;
                 // Reset position but keep scale
@@ -741,6 +836,10 @@
             if (reticle.visible && currentObject) {
                 currentObject.position.setFromMatrixPosition(reticle.matrix);
                 currentObject.visible = true;
+                
+                // Scale object appropriately for AR
+                const scale = 0.3; // Smaller scale for AR viewing
+                currentObject.scale.set(scale, scale, scale);
             }
         }
 
